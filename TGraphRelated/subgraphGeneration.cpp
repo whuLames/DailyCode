@@ -13,6 +13,7 @@
 #include <random>
 #include <algorithm>
 #include <cstring>
+#include <thread>
 using namespace std;
 
 inline bool fileExists(string filename)
@@ -61,6 +62,7 @@ void getDegree(vector<int>& rowPtr, vector<int>& degree)
 
 int subgraphGen(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, vector<int>& selectedVertices, vector<int>& subRowPtr, vector<int>& subColumns)
 {
+    // The implementation by openmp
     int subVNum = selectedVertices.size();
     vector<int> subDegree(subVNum);
     // vector<int> subRowPtr(subVNum + 1);
@@ -105,11 +107,80 @@ int subgraphGen(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, 
     return degreeSum;
 }
 
-// bool check(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, vector<int>& selectedVertices, vector<int>& subRowPtr, vector<int>& subColumns)
-// {
-//     int subNum = selectedVertices
-//     vector<int> subDegree()
-// }
+void threadwork(int tid, int numThreads, vector<int>& selectedVertices, vector<int>& degree, vector<int>& subRowPtr, vector<int>& subColumns, vector<int>& rowPtr, vector<int>& columns)
+{   
+    int selectedVertexNum = selectedVertices.size();
+    // 向上取整
+    int chunksize = (selectedVertexNum + numThreads - 1) / numThreads;
+    int left, right;
+    left = tid * chunksize;
+    right = min((tid + 1) * chunksize, selectedVertexNum);
+
+    while(left < right)
+    {
+        int currentVertex = selectedVertices[left];
+        int currentDegree = degree[currentVertex];
+        int globalStart = rowPtr[currentVertex], localStart = subRowPtr[left];
+        for(int i = 0; i < currentDegree; i ++)
+        {
+            subColumns[localStart + i] = columns[globalStart + i];
+        }
+        left ++;
+    }
+
+
+}
+
+int subgraphpre(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, vector<int>& selectedVertices, vector<int>& subRowPtr, vector<int>& subColumns)
+{
+    int degreeSum = 0, selectedVertexNum = selectedVertices.size();
+
+    
+    for(int i = 0; i < selectedVertices.size(); i ++)
+    {
+        degreeSum += degree[selectedVertices[i]];
+    }
+    subColumns.resize(degreeSum);
+
+    for(int i = 0; i < selectedVertexNum; i ++) 
+    {
+        subRowPtr[i + 1] = subRowPtr[i] + degree[selectedVertices[i]];
+
+    }
+
+    return degreeSum;
+}
+
+bool check(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, vector<int>& selectedVertices, vector<int>& subRowPtr, vector<int>& subColumns)
+{
+    int vNum = rowPtr.size() - 1;
+    int subVNum = selectedVertices.size();
+    vector<int> subDegree(subVNum);
+
+    for(int i = 0; i < subVNum; i ++)
+    {
+        subDegree[i] = degree[selectedVertices[i]];
+    }
+
+    int degreeSum = 0;
+    for(int i = 0; i < subVNum; i ++) degreeSum += subDegree[i];
+    if(degreeSum != subColumns.size()) return false;
+
+    for(int i = 0; i < subVNum; i ++)
+    {
+        int vertex = selectedVertices[i];
+        int start = rowPtr[vertex], end = rowPtr[vertex + 1];
+        int sz = end - start;
+        int substart = subRowPtr[i];
+        for(int j = 0; j < sz; j ++)
+        {
+            if(subColumns[substart + j] != columns[start + j]) return false;
+        }
+    }
+
+    return true;
+}
+
 int main(int argc, char** argv)
 {
     /*
@@ -153,9 +224,35 @@ int main(int argc, char** argv)
     vector<int> subRowPtr(selectedVertexNum + 1);
     vector<int> subColumns(selectedVertexNum);
 
-    cout << "begin subgraph generation " << endl;
-    int sum = subgraphGen(rowPtr, columns, degree, selectedVertices, subRowPtr, subColumns);
 
+    int size = subgraphpre(rowPtr, columns, degree, selectedVertices, subRowPtr, subColumns);
+
+    
+
+    int numThreads = atoi(argv[4]);
+
+    cout << "Thread Num: " << numThreads << endl;
+    thread workThreads[numThreads];
+
+    
     clock_t c4 = clock();
-    cout << "SubGraph Generation Time: " << double(c4 - c3) / CLOCKS_PER_SEC <<  " s" << "  subgraph size: " << sum << endl;
+    cout << "subgraph size: " << size << "subgraph prepare time: " << double(c4 - c3) / CLOCKS_PER_SEC << " s" << endl;
+    
+    for(int i = 0; i < numThreads; i ++)
+    {
+        workThreads[i] = thread(threadwork, i, numThreads, ref(selectedVertices), ref(degree), ref(subRowPtr), ref(subColumns), ref(rowPtr), ref(columns));
+    }
+
+    for(int i = 0; i < numThreads; i ++)
+    {
+        workThreads[i].join();
+    }
+
+    clock_t c5 = clock();
+
+    cout << "SubGraph Generation Time: " << double(c5 - c4) / CLOCKS_PER_SEC <<  " s" << endl;
+    
+    bool flag = check(rowPtr, columns, degree, selectedVertices, subRowPtr, subColumns);
+    if(flag) cout << "Check Passed !!" << endl;
+    else cout << "Check Failed !!" << endl;
 }
