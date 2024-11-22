@@ -116,6 +116,7 @@ void threadwork(int tid, int numThreads, vector<int>& selectedVertices, vector<i
     left = tid * chunksize;
     right = min((tid + 1) * chunksize, selectedVertexNum);
 
+    cout << "Thread ID: " << tid << " left: " << left << " right: " << right << endl;
     while(left < right)
     {
         int currentVertex = selectedVertices[left];
@@ -127,8 +128,6 @@ void threadwork(int tid, int numThreads, vector<int>& selectedVertices, vector<i
         }
         left ++;
     }
-
-
 }
 
 int subgraphpre(vector<int>& rowPtr, vector<int>& columns, vector<int>& degree, vector<int>& selectedVertices, vector<int>& subRowPtr, vector<int>& subColumns)
